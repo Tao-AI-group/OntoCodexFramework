@@ -1,4 +1,4 @@
-# OntoCodex (v0.2)
+# OntoCodex (v2.0)
 
 Ontology-first, LangChain-aligned framework for building agentic, KG-aware AI apps.
 
