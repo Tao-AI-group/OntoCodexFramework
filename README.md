@@ -26,4 +26,4 @@ python examples/01_basic_rag.py
 > To use OpenAI or FAISS, install those deps and set env vars per comments in code.
 
 ## License
-MIT
+MIT © 2025 Jingna Feng
