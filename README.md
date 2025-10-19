@@ -1,4 +1,4 @@
-# OntoCodex (v2.0)
+# OntoCodex: Multi-agent Biomedical Ontology Enrichment Framework
 
 Ontology-first, LangChain-aligned framework for building agentic, KG-aware AI apps.
 
