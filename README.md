@@ -2,6 +2,8 @@
 
 Ontology-first, LangChain-aligned framework for building agentic, KG-aware AI apps.
 
+OntoCodex GPT built with this framework as a showcase: https://chatgpt.com/g/g-6734e1cd43008190b7245d756c8e75ef-ontocodex
+
 ## Features
 - LCEL-style pipelines (`a | b | c`) with `Runnable`
 - Hybrid retrieval (vector + KG/SPARQL)
