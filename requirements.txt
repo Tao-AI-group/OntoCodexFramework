@@ -1,0 +1,14 @@
+# Core
+pydantic>=2.5.0
+pyyaml>=6.0.1
+rdflib>=6.3.2
+numpy>=1.24.0
+
+# Optional adapters
+# faiss-cpu>=1.7.4
+# openai>=1.30.0
+# sentence-transformers>=2.5.1
+
+# Optional tracing
+# opentelemetry-api>=1.24.0
+# opentelemetry-sdk>=1.24.0
