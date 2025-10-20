@@ -3,26 +3,12 @@ from .blackboard import Blackboard
 from .agents.base_agent import BaseAgent
 from .router_planner import PlannerRouter
 from ..core.memory import ConversationMemory
-
 class CodexOrchestratorPlanned:
-    """Multi-agent orchestrator driven by LLM planner routing."""
-    def __init__(self, agents: List[BaseAgent], memory: Optional[ConversationMemory] = None):
-        self.agents = agents
-        self.bb = Blackboard()
-        self.memory = memory or ConversationMemory(max_turns=50)
-        self.router = PlannerRouter(self.memory)
-
+    def __init__(self, agents: List[BaseAgent], memory: Optional[ConversationMemory]=None):
+        self.agents=agents; self.bb=Blackboard(); self.memory=memory or ConversationMemory(50); self.router=PlannerRouter(self.memory)
     def chat_turn(self, user_text: str, max_rounds: int = 4) -> Dict[str, Any]:
-        # Log user turn
-        self.memory.add("user", user_text)
-        # Planner decides where to route
-        plan = self.router.route(self.bb, user_text)
-        # Run agents for a few cycles
+        self.memory.add('user', user_text); plan=self.router.route(self.bb, user_text)
         for _ in range(max_rounds):
-            for agent in self.agents:
-                agent.step(self.bb)
-        # Collect results
-        results = [m.content for m in self.bb.query(receiver="coordinator", type="result")]
-        # Record agent output to memory
-        self.memory.add("agent", {"plan": plan, "results": results})
-        return {"plan": plan, "results": results}
+            for a in self.agents: a.step(self.bb)
+        results=[m.content for m in self.bb.query(receiver='coordinator', type='result')]
+        self.memory.add('agent', {'plan':plan,'results':results}); return {'plan':plan,'results':results}
