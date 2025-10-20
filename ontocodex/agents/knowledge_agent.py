@@ -2,6 +2,9 @@ from typing import Dict, Any, List, Optional, Tuple
 import os
 from datetime import datetime, timezone
 from rdflib import Graph, RDFS, Namespace
+from ..guidelines.guideline_retrievers import (
+    pubmed_guidelines, ada_guidelines, acc_guidelines, aha_guidelines, nih_guidelines, cdc_guidelines
+)
 
 SKOS = Namespace("http://www.w3.org/2004/02/skos/core#")
 IAO = Namespace("http://purl.obolibrary.org/obo/IAO_")
@@ -30,16 +33,15 @@ class KnowledgebaseAgent:
         return g
 
     def _extract_from_definition(self, text: str, requested: List[str]) -> List[Dict[str,Any]]:
-        t = text.lower()
+        t = (text or "").lower()
         rels: List[Dict[str,Any]] = []
         hits = 0
         if "insulin" in t and "treated_with" in requested:
             rels.append({"predicate":"treated_with","object":"Insulin"}); hits += 1
         if any(k in t for k in ["polyuria","polydipsia","weight loss"]) and "has_symptom" in requested:
             rels.append({"predicate":"has_symptom","object":"Polyuria"}); hits += 1
-        if "glycated hemoglobin" in t or "hba1c" in t:
-            if "has_lab_test" in requested:
-                rels.append({"predicate":"has_lab_test","object":"HbA1c"}); hits += 1
+        if ("glycated hemoglobin" in t or "hba1c" in t) and "has_lab_test" in requested:
+            rels.append({"predicate":"has_lab_test","object":"HbA1c"}); hits += 1
         for r in rels:
             r["hits"] = hits
         return rels
@@ -66,9 +68,15 @@ class KnowledgebaseAgent:
                 return (str(d) if d else None), [{"source":"DOID","uri":str(s)}], str(s)
         return None, [], None
 
-    def _confidence(self, base: float, hits: int) -> float:
-        conf = min(base + 0.03 * max(hits, 0), 0.98)
-        return round(conf, 3)
+    def _conf_text(self, base: float, hits: int) -> float:
+        return round(min(base + 0.03 * max(hits, 0), 0.98), 3)
+
+    def _conf_guideline(self, base: float, year: Optional[int]) -> float:
+        from datetime import datetime
+        y = datetime.utcnow().year
+        if year and year >= y - 2:
+            base += 0.02
+        return round(min(base, 0.98), 3)
 
     def gather_from_goal(self, reader_goal: Dict[str, Any]) -> Dict[str, Any]:
         focus_label = reader_goal.get("focus_label")
@@ -77,7 +85,7 @@ class KnowledgebaseAgent:
         evidence_snips: List[str] = []
         entities: List[str] = []
 
-        mlp_def, mlp_meta, mlp_uri = self._lookup_mlp(focus_label)
+        mlp_def, _, mlp_uri = self._lookup_mlp(focus_label)
         if mlp_def:
             mined = self._extract_from_definition(mlp_def, requested)
             for m in mined:
@@ -87,14 +95,14 @@ class KnowledgebaseAgent:
                     "evidence": mlp_def,
                     "agent": "KnowledgebaseAgent",
                     "timestamp": _now_iso(),
-                    "confidence": self._confidence(0.90, m.get("hits", 0)),
+                    "confidence": self._conf_text(0.90, m.get("hits", 0)),
                 })
             out_rels.extend(mined)
             evidence_snips.append(mlp_def)
             entities.extend([m["object"] for m in mined])
 
         if len(out_rels) < len(requested):
-            doid_def, doid_meta, doid_uri = self._lookup_doid(focus_label)
+            doid_def, _, doid_uri = self._lookup_doid(focus_label)
             if doid_def:
                 mined = self._extract_from_definition(doid_def, requested)
                 for m in mined:
@@ -104,20 +112,47 @@ class KnowledgebaseAgent:
                         "evidence": doid_def,
                         "agent": "KnowledgebaseAgent",
                         "timestamp": _now_iso(),
-                        "confidence": self._confidence(0.75, m.get("hits", 0)),
+                        "confidence": self._conf_text(0.75, m.get("hits", 0)),
                     })
                 seen = {(r["predicate"], r["object"]) for r in out_rels}
                 for m in mined:
-                    key = (m["predicate"], m["object"])
-                    if key not in seen:
-                        out_rels.append(m); seen.add(key)
+                    if (m["predicate"], m["object"]) not in seen:
+                        out_rels.append(m); seen.add((m["predicate"], m["object"]))
                 evidence_snips.append(doid_def)
                 entities.extend([m["object"] for m in mined])
 
-        return {
-            "focus_label": focus_label,
-            "relations": out_rels,
-            "evidence_snippets": evidence_snips,
-            "entities": list(dict.fromkeys(entities)),
-            "source_priority": ["MedlinePlus", "DOID.ttl/DOID.owl"]
-        }
+        if focus_label:
+            pm = pubmed_guidelines(focus_label, max_results=5)
+            for rec in pm:
+                out_rels.append({
+                    "predicate": "supported_by_guideline",
+                    "object": f"PubMed:{rec.get('pmid')}",
+                    "source": "PubMed",
+                    "source_uri": rec.get("url"),
+                    "evidence": rec.get("title"),
+                    "agent": "KnowledgebaseAgent",
+                    "timestamp": _now_iso(),
+                    "confidence": self._conf_guideline(0.85, rec.get("year"))
+                })
+                evidence_snips.append(rec.get("title") or "")
+
+        inst_sources = [("ADA", ada_guidelines), ("ACC", acc_guidelines), ("AHA", aha_guidelines), ("NIH", nih_guidelines), ("CDC", cdc_guidelines)]
+        for name, fn in inst_sources:
+            try:
+                recs = fn(focus_label or "")
+            except Exception:
+                recs = []
+            for rec in recs[:2]:
+                out_rels.append({
+                    "predicate": "supported_by_guideline",
+                    "object": f"{name}:{rec.get('year')}",
+                    "source": name,
+                    "source_uri": rec.get("url"),
+                    "evidence": rec.get("title"),
+                    "agent": "KnowledgebaseAgent",
+                    "timestamp": _now_iso(),
+                    "confidence": self._conf_guideline(0.88, rec.get("year"))
+                })
+                evidence_snips.append(rec.get("title") or "")
+
+        return {"focus_label": focus_label, "relations": out_rels, "evidence_snippets": [e for e in evidence_snips if e], "entities": list(dict.fromkeys(entities)), "source_priority": ["MedlinePlus", "DOID.ttl/DOID.owl", "PubMed(≤5y)", "ADA/ACC/AHA/NIH/CDC"]}
