@@ -1,47 +1,51 @@
-# OntoCodex: Multi-agent Biomedical Ontology Enrichment Framework
+# OntoCodex Chat API (v0.8)
 
-Ontology-first, LangChain-aligned framework for building agentic, KG-aware AI apps.
+FastAPI microservice exposing a **/chat** endpoint that runs the OntoCodex **agent with memory + LLM planner**.
 
-OntoCodex GPT built with this framework as a showcase: https://chatgpt.com/g/g-6734e1cd43008190b7245d756c8e75ef-ontocodex
+> Requires OntoCodex framework (v0.7+ recommended) to be installed separately.
 
-## Features
-- LCEL-style pipelines (`a | b | c`) with `Runnable`
-- Hybrid retrieval (vector + KG/SPARQL)
-- Ontology-aware planner and semantic critic
-- Config-driven pipelines (YAML + Pydantic)
-- Provenance/tracing hooks
-
-## Install (editable)
+## Install
 ```bash
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-pip install -e .
+# In the same environment, install OntoCodex (v0.7+)
+# pip install -e ../ontocodex_v0_7_self_training_patch (plus prior versions you merged)
 ```
 
-## Quickstart
+## Run
 ```bash
-python examples/01_basic_rag.py
+export ONTOCODEX_DATA_DIR=../your_data_dir   # must contain DOID.owl, MEDLINEPLUS.ttl, HP.csv, OMOP CSVs
+uvicorn api_server:app --reload
 ```
 
-> The default example uses a **SimpleEmbedder** and **SimpleVectorStore** so it runs without extra deps or API keys.
-> To use OpenAI or FAISS, install those deps and set env vars per comments in code.
+## Endpoints
+- `GET /ping` — healthcheck
+- `POST /chat` — run one turn with memory + planner + tools
+- `POST /reset` — reset a session
+- `GET /session/{session_id}/history` — inspect memory state
+- `GET /config` — peek planner backend (OpenAI / Anthropic / local-ft / stub)
 
-
-## Set your data folder (DOID.owl, MEDLINEPLUS.ttl, HP.csv, OMOP CSVs)
-```bash
-export ONTOCODEX_DATA_DIR=./data
+### POST /chat
+**Request:**
+```json
+{
+  "session_id": "optional-session-id",
+  "user_text": "Map TSH to LOINC"
+}
+```
+**Response:**
+```json
+{
+  "session_id": "generated-or-reused",
+  "plan": {"action":"MAP","table":"loinc","backend":"openai","raw":"ACTION: MAP table=loinc"},
+  "result": {"ranked":[...], "top": {...}},
+  "memory_last": [{"role":"user","content":"..."}, {"role":"agent","content":{...}}]
+}
 ```
 
-## Run the agent demo
-```bash
-python examples/run_agent.py
-```
-## Run LLM agent as planner
-```bash
-pip install openai anthropic
-export OPENAI_API_KEY=sk-yourkey
-# or export ANTHROPIC_API_KEY=sk-ant-yourkey
-python examples/run_agent_with_llm_planner.py
-```
-
-## License
-MIT © 2025 Jingna Feng
+## Notes
+- Planner backend autodetect order (from OntoCodex v0.7):
+  1. Local fine-tuned HF model (`ONTOCODEX_PLANNER_LOCAL_PATH`)
+  2. OpenAI (`OPENAI_API_KEY`)
+  3. Anthropic (`ANTHROPIC_API_KEY`)
+  4. Stub (offline)

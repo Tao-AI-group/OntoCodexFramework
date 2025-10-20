@@ -1,6 +1,4 @@
+fastapi>=0.112.0
+uvicorn>=0.30.0
 pydantic>=2.5.0
-pyyaml>=6.0.1
-rdflib>=6.3.2
-numpy>=1.24.0
-pandas>=2.0.0
-rapidfuzz>=3.6.1
+# Install OntoCodex framework separately (v0.7+ recommended)
