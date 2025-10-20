@@ -27,15 +27,16 @@ class OntoCodexOrchestrator:
         kb = self.kb.gather_from_goal(read)
         self.memory.add("knowledge", kb)
 
-        maps = self.terms.map_terms(kb.get("entities") or [])
-        self.memory.add("terminologies", maps)
+        annotations = self.terms.annotate_entities(kb.get("entities") or [], vocabularies=["SNOMED","RxNorm","LOINC","ICD10CM","ATC"])
+        self.memory.add("terminology_annotations", annotations)
 
-        kb["relations"] = self.llm.harmonize_confidence(kb.get("relations", []), maps)
+        if hasattr(self.llm, "harmonize_confidence"):
+            kb["relations"] = self.llm.harmonize_confidence(kb.get("relations", []), annotations)
 
         script = self.enrich.generate(
             ontology_context={"focus_iri": read.get("focus_iri"), "focus_label": read.get("focus_label")},
-            evidence=kb, mappings=maps, user_goal=user_goal, disease_or_class=read.get("focus_label")
+            evidence=kb, mappings=annotations, user_goal=user_goal, disease_or_class=read.get("focus_label")
         )
         self.memory.add("enrichment_script", script)
 
-        return {"plan": plan, "ontology_reader": read, "knowledge": kb, "terminologies": maps, "enrichment_script": script}
+        return {"plan": plan, "ontology_reader": read, "knowledge": kb, "annotations": annotations, "enrichment_script": script}
