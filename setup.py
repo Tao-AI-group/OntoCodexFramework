@@ -1,8 +1,8 @@
 from setuptools import setup, find_packages
 setup(
   name="ontocodex",
-  version="0.3.0",
-  description="OntoCodex — ontology-first agent framework (LangChain-aligned)",
+  version="0.4.0",
+  description="OntoCodex — ontology-first agent framework (memory + planner)",
   author="You",
   license="MIT",
   packages=find_packages(exclude=("examples","data",".github","tests")),
