@@ -83,7 +83,6 @@ class PriorityRouter:
         self.mlp = MedlinePlusLoader(cfg.medlineplus_path)
         self.hp = HPTable(cfg.hp_path)
         self.cfg = cfg
-
     def resolve_concept(self, text: str) -> Dict[str, Any]:
         doid_hits = self.doid.lookup_label(text)
         if doid_hits:

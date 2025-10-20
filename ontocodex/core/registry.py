@@ -1,14 +1,11 @@
-from typing import Callable, Dict
-
-_REGISTRY: Dict[str, Callable[..., object]] = {}
-
-def register(name: str):
-    def deco(fn: Callable[..., object]):
-        _REGISTRY[name] = fn
-        return fn
-    return deco
-
-def create(name: str, **kwargs):
-    if name not in _REGISTRY:
-        raise KeyError(f"Component '{name}' not registered")
-    return _REGISTRY[name](**kwargs)
+from typing import Any, Dict
+_TOOLS: Dict[str, Any] = {}
+def register_tool(name: str, tool: Any):
+    _TOOLS[name] = tool
+    return tool
+def get_tool(name: str) -> Any:
+    if name not in _TOOLS:
+        raise KeyError(f"Tool '{name}' not registered")
+    return _TOOLS[name]
+def list_tools() -> Dict[str, Any]:
+    return dict(_TOOLS)
