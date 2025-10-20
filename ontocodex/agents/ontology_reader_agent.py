@@ -1,57 +1,48 @@
 from typing import Dict, Any, Optional, List, Tuple
 import os
-from rdflib import Graph
-from rdflib.namespace import RDFS
-from ..core.memory import ConversationMemory
+from rdflib import Graph, URIRef, RDF, RDFS, Namespace
+
+OWL = Namespace("http://www.w3.org/2002/07/owl#")
+IAO = Namespace("http://purl.obolibrary.org/obo/IAO_")
+OCX = Namespace("http://ontocodex.ai/schema#")
 
 class OntologyReaderAgent:
-    def __init__(self, data_dir: str, memory: ConversationMemory, doid_filename: str = "DOID.owl"):
+    def __init__(self, data_dir: str, memory):
         self.data_dir = data_dir
-        self.doid_path = os.path.join(data_dir, doid_filename)
         self.memory = memory
-        self.graph = Graph()
-        try:
-            if os.path.exists(self.doid_path) and os.path.getsize(self.doid_path) > 0:
-                self.graph.parse(self.doid_path)
-        except Exception:
-            pass
-
-    def _search_label(self, text: str, limit: int = 25) -> List[Tuple[str,str]]:
-        if len(self.graph) == 0:
-            return []
-        q = f"""PREFIX rdfs: <{RDFS}>
-        SELECT ?s ?l WHERE {{
-          ?s rdfs:label ?l .
-          FILTER(CONTAINS(LCASE(STR(?l)), "{text.lower()}"))
-        }} LIMIT {limit}"""
-        return [(str(s), str(l)) for (s,l) in self.graph.query(q)]
-
-    def _definition(self, iri: str) -> Optional[str]:
-        if len(self.graph) == 0:
-            return None
-        q = f"""PREFIX IAO: <http://purl.obolibrary.org/obo/IAO_>
-        SELECT ?d WHERE {{ <{iri}> IAO:0000115 ?d }} LIMIT 1"""
-        rows = list(self.graph.query(q))
-        return str(rows[0][0]) if rows else None
-
-    def _neighbors(self, iri: str) -> Dict[str, Any]:
-        if len(self.graph) == 0:
-            return {"parents": [], "children": []}
-        qp = f"""PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX IAO: <http://purl.obolibrary.org/obo/IAO_>
-        SELECT ?p ?d WHERE {{ <{iri}> rdfs:subClassOf ?p . OPTIONAL {{ ?p IAO:0000115 ?d }} }}"""
-        parents = [(str(p), str(d) if d else "") for (p,d) in self.graph.query(qp)]
-        qc = f"""PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX IAO: <http://purl.obolibrary.org/obo/IAO_>
-        SELECT ?c ?d WHERE {{ ?c rdfs:subClassOf <{iri}> . OPTIONAL {{ ?c IAO:0000115 ?d }} }}"""
-        children = [(str(c), str(d) if d else "") for (c,d) in self.graph.query(qc)]
-        return {"parents": parents, "children": children}
-
-    def read(self, focus_text: str) -> Dict[str, Any]:
-        hits = self._search_label(focus_text)
-        if hits:
-            iri, label = hits[0]
-            definition = self._definition(iri)
-            ctx = self._neighbors(iri)
-            return {"source":"DOID","focus_iri":iri,"focus_label":label,"definition":definition,"neighbors":ctx}
-        return {"source":"DOID","focus_label":focus_text,"hits":[]}
+    def _parse(self, path: Optional[str]) -> Graph:
+        g = Graph()
+        if path and os.path.exists(path) and os.path.getsize(path) > 0:
+            try: g.parse(path)
+            except Exception:
+                try: g.parse(path, format="turtle")
+                except Exception: pass
+        return g
+    def _classes(self, g: Graph) -> List[Tuple[str, str]]:
+        out=[]; 
+        for s in g.subjects(RDF.type, OWL.Class):
+            label=g.value(s, RDFS.label); out.append((str(s), str(label) if label else ""))
+        return out
+    def _object_properties(self, g: Graph) -> List[Tuple[str, str]]:
+        out=[]; 
+        for s in g.subjects(RDF.type, OWL.ObjectProperty):
+            label=g.value(s, RDFS.label); out.append((str(s), str(label) if label else ""))
+        return out
+    def _definitions(self, g: Graph, iri: str) -> Optional[str]:
+        d=g.value(URIRef(iri), IAO["0000115"]); return str(d) if d else None
+    def _infer_requested_relations(self, props: List[Tuple[str,str]]) -> List[str]:
+        labels=[p[1].lower() for p in props if p[1]]; likely=[]
+        for cand in ["treated_with","has_symptom","diagnosed_by","has_risk_factor","has_lab_test"]:
+            if any(cand.replace("_"," ") in l for l in labels) or any(cand in l for l in labels): likely.append(cand)
+        return likely
+    def read_from_file(self, file_path: Optional[str], requested_relations: Optional[List[str]] = None) -> Dict[str, Any]:
+        g=self._parse(file_path); classes=self._classes(g); props=self._object_properties(g)
+        req=requested_relations or self._infer_requested_relations(props)
+        focus_iri,focus_label=(classes[0] if classes else (None,None))
+        return {
+            "source_file": file_path,
+            "classes": [{"iri": c, "label": l, "definition": self._definitions(g, c)} for c,l in classes],
+            "object_properties": [{"iri": p, "label": l} for p,l in props],
+            "relations_to_enrich": req,
+            "focus_iri": focus_iri, "focus_label": focus_label
+        }

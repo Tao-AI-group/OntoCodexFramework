@@ -1,0 +1,9 @@
+@prefix : <http://example.org/onto#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix IAO: <http://purl.obolibrary.org/obo/IAO_> .
+:Diabetes a owl:Class ; rdfs:label "Diabetes mellitus" ;
+  IAO:0000115 "A metabolic disease characterized by high blood sugar and in many cases treated with insulin; common symptoms include polyuria and weight loss; diagnostic tests include glycated hemoglobin." .
+:treated_with a owl:ObjectProperty ; rdfs:label "treated_with" .
+:has_symptom a owl:ObjectProperty ; rdfs:label "has_symptom" .
+:has_lab_test a owl:ObjectProperty ; rdfs:label "has_lab_test" .
