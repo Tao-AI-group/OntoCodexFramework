@@ -1,5 +1,6 @@
 from typing import Dict, Any
 from ..core.memory import ConversationMemory
+from ..io.planner_logger import PlannerLogger
 
 # Auto-detect LLM backend
 LLM_BACKEND = None
@@ -20,13 +21,12 @@ except Exception:
 class TinyPlanner:
     """
     Planner powered by real LLMs (OpenAI/Anthropic) with stub fallback.
-    The LLM must output one of:
-      - ACTION: PHENOTYPE
-      - ACTION: MAP table=<rxnorm|loinc|snomed>
+    Logs every decision for retraining.
     """
-    def __init__(self, memory: ConversationMemory, llm=None):
+    def __init__(self, memory: ConversationMemory, llm=None, log_dir: str = "logs"):
         self.memory = memory
         self.llm = llm or DefaultLLM()
+        self.logger = PlannerLogger(log_dir)
 
     def plan(self, user_text: str) -> Dict[str, Any]:
         hist = self.memory.to_prompt(last_n=6)
@@ -43,11 +43,24 @@ class TinyPlanner:
             content = self.llm.invoke(messages).get("content", "ACTION: PHENOTYPE")
         except Exception as e:
             content = f"ACTION: PHENOTYPE  # fallback ({e})"
-        action = "PHENOTYPE"
-        table = None
+
+        action, table = "PHENOTYPE", None
         if "MAP" in content.upper():
             action = "MAP"
             if "rxnorm" in content.lower(): table = "rxnorm"
             elif "loinc" in content.lower(): table = "loinc"
             elif "snomed" in content.lower(): table = "snomed"
-        return {"action": action, "table": table, "backend": LLM_BACKEND, "raw": content}
+
+        result = {"action": action, "table": table, "backend": LLM_BACKEND, "raw": content}
+
+        # --- Log the planner output ---
+        self.logger.log({
+            "user_text": user_text,
+            "memory_context": hist,
+            "model_backend": LLM_BACKEND,
+            "model_output": content,
+            "parsed_action": action,
+            "parsed_table": table
+        })
+
+        return result
