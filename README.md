@@ -27,11 +27,13 @@ python examples/01_basic_rag.py
 
 
 ## Set your data folder (DOID.owl, MEDLINEPLUS.ttl, HP.csv, OMOP CSVs)
-```export ONTOCODEX_DATA_DIR=./data
+```bash
+export ONTOCODEX_DATA_DIR=./data
 ```
 
 ## Run the agent demo
-```python examples/run_agent.py
+```bash
+python examples/run_agent.py
 ```
 
 
