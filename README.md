@@ -35,7 +35,13 @@ export ONTOCODEX_DATA_DIR=./data
 ```bash
 python examples/run_agent.py
 ```
-
+## Run LLM agent as planner
+```bash
+pip install openai anthropic
+export OPENAI_API_KEY=sk-yourkey
+# or export ANTHROPIC_API_KEY=sk-ant-yourkey
+python examples/run_agent_with_llm_planner.py
+```
 
 ## License
 MIT © 2025 Jingna Feng
