@@ -1,32 +1,47 @@
 from typing import Dict, Any
+import os
 from ..core.memory import ConversationMemory
-from ..io.planner_logger import PlannerLogger
 
-# Auto-detect LLM backend
+# 1) Prefer local fine-tuned planner if provided
 LLM_BACKEND = None
-try:
-    from ..io.llm_openai import OpenAIPlannerLLM
-    LLM_BACKEND = "openai"
-    DefaultLLM = OpenAIPlannerLLM
-except Exception:
+LOCAL_PATH = os.environ.get("ONTOCODEX_PLANNER_LOCAL_PATH")
+if LOCAL_PATH:
     try:
-        from ..io.llm_anthropic import AnthropicPlannerLLM
-        LLM_BACKEND = "anthropic"
-        DefaultLLM = AnthropicPlannerLLM
+        from ..io.planner_local import LocalPlannerModel as DefaultLLM
+        LLM_BACKEND = "local-ft"
     except Exception:
-        from ..io.llm_stub import TinyLLM
-        LLM_BACKEND = "stub"
-        DefaultLLM = TinyLLM
+        LOCAL_PATH = None
+
+# 2) Else try OpenAI, then Anthropic, else stub
+if not LOCAL_PATH:
+    try:
+        from ..io.llm_openai import OpenAIPlannerLLM as DefaultLLM
+        LLM_BACKEND = "openai"
+    except Exception:
+        try:
+            from ..io.llm_anthropic import AnthropicPlannerLLM as DefaultLLM
+            LLM_BACKEND = "anthropic"
+        except Exception:
+            from ..io.llm_stub import TinyLLM as DefaultLLM
+            LLM_BACKEND = "stub"
+
+# Optional logger (if available)
+try:
+    from ..io.planner_logger import PlannerLogger
+except Exception:
+    PlannerLogger = None
 
 class TinyPlanner:
     """
-    Planner powered by real LLMs (OpenAI/Anthropic) with stub fallback.
-    Logs every decision for retraining.
+    Planner that uses:
+      - Local fine-tuned HF model if ONTOCODEX_PLANNER_LOCAL_PATH is set
+      - Else OpenAI → Anthropic → Stub fallback
+    Logs decisions if planner_logger is available.
     """
     def __init__(self, memory: ConversationMemory, llm=None, log_dir: str = "logs"):
         self.memory = memory
-        self.llm = llm or DefaultLLM()
-        self.logger = PlannerLogger(log_dir)
+        self.llm = llm or (DefaultLLM() if LLM_BACKEND != "local-ft" else DefaultLLM(model_path=LOCAL_PATH))
+        self.logger = PlannerLogger(log_dir) if PlannerLogger else None
 
     def plan(self, user_text: str) -> Dict[str, Any]:
         hist = self.memory.to_prompt(last_n=6)
@@ -52,15 +67,13 @@ class TinyPlanner:
             elif "snomed" in content.lower(): table = "snomed"
 
         result = {"action": action, "table": table, "backend": LLM_BACKEND, "raw": content}
-
-        # --- Log the planner output ---
-        self.logger.log({
-            "user_text": user_text,
-            "memory_context": hist,
-            "model_backend": LLM_BACKEND,
-            "model_output": content,
-            "parsed_action": action,
-            "parsed_table": table
-        })
-
+        if self.logger:
+            self.logger.log({
+                "user_text": user_text,
+                "memory_context": hist,
+                "model_backend": LLM_BACKEND,
+                "model_output": content,
+                "parsed_action": action,
+                "parsed_table": table
+            })
         return result
