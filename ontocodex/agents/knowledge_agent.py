@@ -1,59 +1,123 @@
 from typing import Dict, Any, List, Optional, Tuple
 import os
+from datetime import datetime, timezone
 from rdflib import Graph, RDFS, Namespace
+
 SKOS = Namespace("http://www.w3.org/2004/02/skos/core#")
 IAO = Namespace("http://purl.obolibrary.org/obo/IAO_")
+
+def _now_iso():
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00","Z")
+
 class KnowledgebaseAgent:
     def __init__(self, memory, data_dir: str = "data"):
-        self.memory = memory; self.data_dir = data_dir
+        self.memory = memory
+        self.data_dir = data_dir
         self.mlp_ttl = os.path.join(self.data_dir, "MEDLINEPLUS.ttl")
         self.doid_ttl = os.path.join(self.data_dir, "DOID.ttl")
         self.doid_owl = os.path.join(self.data_dir, "DOID.owl")
+
     def _parse_if_exists(self, path: str) -> Graph:
         g = Graph()
         if os.path.exists(path) and os.path.getsize(path) > 0:
-            try: g.parse(path)
+            try:
+                g.parse(path)
             except Exception:
-                try: g.parse(path, format="turtle")
-                except Exception: pass
+                try:
+                    g.parse(path, format="turtle")
+                except Exception:
+                    pass
         return g
-    def _extract_from_definition(self, text: str, requested: List[str]) -> List[Dict[str,str]]:
-        t=text.lower(); rels=[]
-        if "insulin" in t and "treated_with" in requested: rels.append({"predicate":"treated_with","object":"Insulin"})
-        if any(k in t for k in ["polyuria","polydipsia","weight loss"]) and "has_symptom" in requested: rels.append({"predicate":"has_symptom","object":"Polyuria"})
-        if "glycated hemoglobin" in t and "has_lab_test" in requested: rels.append({"predicate":"has_lab_test","object":"HbA1c"})
+
+    def _extract_from_definition(self, text: str, requested: List[str]) -> List[Dict[str,Any]]:
+        t = text.lower()
+        rels: List[Dict[str,Any]] = []
+        hits = 0
+        if "insulin" in t and "treated_with" in requested:
+            rels.append({"predicate":"treated_with","object":"Insulin"}); hits += 1
+        if any(k in t for k in ["polyuria","polydipsia","weight loss"]) and "has_symptom" in requested:
+            rels.append({"predicate":"has_symptom","object":"Polyuria"}); hits += 1
+        if "glycated hemoglobin" in t or "hba1c" in t:
+            if "has_lab_test" in requested:
+                rels.append({"predicate":"has_lab_test","object":"HbA1c"}); hits += 1
+        for r in rels:
+            r["hits"] = hits
         return rels
+
     def _lookup_mlp(self, label: Optional[str]): 
-        if not label: return None, []
-        g=self._parse_if_exists(self.mlp_ttl); 
-        if len(g)==0: return None, []
-        for s,l in g.subject_objects(RDFS.label):
-            if str(l).lower()==label.lower():
-                d=g.value(s, SKOS.definition); return (str(d) if d else None), [{"source":"MedlinePlus","uri":str(s)}]
-        return None, []
+        if not label: return None, [], None
+        g = self._parse_if_exists(self.mlp_ttl)
+        if len(g) == 0: return None, [], None
+        for s, l in g.subject_objects(RDFS.label):
+            if str(l).lower() == label.lower():
+                d = g.value(s, SKOS.definition)
+                return (str(d) if d else None), [{"source":"MedlinePlus","uri":str(s)}], str(s)
+        return None, [], None
+
     def _lookup_doid(self, label: Optional[str]): 
-        if not label: return None, []
-        g=self._parse_if_exists(self.doid_ttl); 
-        if len(g)==0: g=self._parse_if_exists(self.doid_owl)
-        if len(g)==0: return None, []
-        for s,l in g.subject_objects(RDFS.label):
-            if str(l).lower()==label.lower():
-                d=g.value(s, IAO["0000115"]); return (str(d) if d else None), [{"source":"DOID","uri":str(s)}]
-        return None, []
+        if not label: return None, [], None
+        g = self._parse_if_exists(self.doid_ttl)
+        if len(g) == 0:
+            g = self._parse_if_exists(self.doid_owl)
+        if len(g) == 0: return None, [], None
+        for s, l in g.subject_objects(RDFS.label):
+            if str(l).lower() == label.lower():
+                d = g.value(s, IAO["0000115"])
+                return (str(d) if d else None), [{"source":"DOID","uri":str(s)}], str(s)
+        return None, [], None
+
+    def _confidence(self, base: float, hits: int) -> float:
+        conf = min(base + 0.03 * max(hits, 0), 0.98)
+        return round(conf, 3)
+
     def gather_from_goal(self, reader_goal: Dict[str, Any]) -> Dict[str, Any]:
-        focus_label=reader_goal.get("focus_label"); requested=reader_goal.get("relations_to_enrich") or []
-        out_rels=[]; evidence=[]; entities=[]
-        mlp_def, mlp_meta = self._lookup_mlp(focus_label)
+        focus_label = reader_goal.get("focus_label")
+        requested = reader_goal.get("relations_to_enrich") or []
+        out_rels: List[Dict[str, Any]] = []
+        evidence_snips: List[str] = []
+        entities: List[str] = []
+
+        mlp_def, mlp_meta, mlp_uri = self._lookup_mlp(focus_label)
         if mlp_def:
-            mined=self._extract_from_definition(mlp_def, requested)
-            for m in mined: m["source"]="MedlinePlus"
-            out_rels.extend(mined); evidence.append(mlp_def); entities.extend([m["object"] for m in mined])
-        if not mlp_def or len(out_rels) < len(requested):
-            doid_def, doid_meta = self._lookup_doid(focus_label)
+            mined = self._extract_from_definition(mlp_def, requested)
+            for m in mined:
+                m.update({
+                    "source": "MedlinePlus",
+                    "source_uri": mlp_uri,
+                    "evidence": mlp_def,
+                    "agent": "KnowledgebaseAgent",
+                    "timestamp": _now_iso(),
+                    "confidence": self._confidence(0.90, m.get("hits", 0)),
+                })
+            out_rels.extend(mined)
+            evidence_snips.append(mlp_def)
+            entities.extend([m["object"] for m in mined])
+
+        if len(out_rels) < len(requested):
+            doid_def, doid_meta, doid_uri = self._lookup_doid(focus_label)
             if doid_def:
-                mined=self._extract_from_definition(doid_def, requested)
-                for m in mined: m["source"]="DOID"
+                mined = self._extract_from_definition(doid_def, requested)
                 for m in mined:
-                    if m not in out_rels: out_rels.append(m)
-                evidence.append(doid_def); entities.extend([m["object"] for m in mined])
-        return {"focus_label":focus_label,"relations":out_rels,"evidence_snippets":evidence,"entities":list(dict.fromkeys(entities)),"source_priority":["MedlinePlus","DOID.ttl/DOID.owl"]}
+                    m.update({
+                        "source": "DOID",
+                        "source_uri": doid_uri,
+                        "evidence": doid_def,
+                        "agent": "KnowledgebaseAgent",
+                        "timestamp": _now_iso(),
+                        "confidence": self._confidence(0.75, m.get("hits", 0)),
+                    })
+                seen = {(r["predicate"], r["object"]) for r in out_rels}
+                for m in mined:
+                    key = (m["predicate"], m["object"])
+                    if key not in seen:
+                        out_rels.append(m); seen.add(key)
+                evidence_snips.append(doid_def)
+                entities.extend([m["object"] for m in mined])
+
+        return {
+            "focus_label": focus_label,
+            "relations": out_rels,
+            "evidence_snippets": evidence_snips,
+            "entities": list(dict.fromkeys(entities)),
+            "source_priority": ["MedlinePlus", "DOID.ttl/DOID.owl"]
+        }
