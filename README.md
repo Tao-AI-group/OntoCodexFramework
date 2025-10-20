@@ -24,6 +24,25 @@ python examples/01_basic_rag.py
 
 > The default example uses a **SimpleEmbedder** and **SimpleVectorStore** so it runs without extra deps or API keys.
 > To use OpenAI or FAISS, install those deps and set env vars per comments in code.
+>
+# 1) Create env
+```
+python -m venv .venv && source .venv/bin/activate
+```
+
+# 2) Install
+```pip install -r requirements.txt
+pip install -e .
+```
+
+# 3) Set your data folder (DOID.owl, MEDLINEPLUS.ttl, HP.csv, OMOP CSVs)
+```export ONTOCODEX_DATA_DIR=./data
+```
+
+# 4) Run the agent demo
+```python examples/run_agent.py
+```
+
 
 ## License
 MIT © 2025 Jingna Feng
