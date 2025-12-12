@@ -1,6 +1,0 @@
-@prefix ex: <http://example.org/> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-ex:Osteoarthritis rdfs:label "Osteoarthritis" .
-ex:Arthritis rdfs:label "Arthritis" .
-ex:TotalKneeArthroplasty rdfs:label "Total knee arthroplasty" .
