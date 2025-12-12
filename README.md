@@ -127,7 +127,7 @@ Contributions are welcome!
 
 If you use OntoCodex in your research, please cite:
 
-> Feng J, et al. *OntoCodex: A Multi-Agent LLM Framework for Biomedical Ontology Enrichment*. (Manuscript under review).
+> Feng J, et al. *OntoCodex: A Multi-Agent Biomedical Ontology Enrichment Framework*. (Manuscript under review).
 
 ---
 
