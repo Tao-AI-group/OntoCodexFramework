@@ -1,8 +1,0 @@
-fastapi>=0.112.0
-uvicorn>=0.30.0
-pydantic>=2.5.0
-rdflib>=6.3.2
-pandas>=2.0.0
-rapidfuzz>=3.6.1
-# OntoCodex framework must be installed/editable alongside this API
-# e.g., pip install -e ../ontocodex_scaffold_v0_2 or ontocodex_gpt_update_v0_2
